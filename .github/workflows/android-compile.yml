@@ -1,0 +1,75 @@
+name: Android APK Compiler CI
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'build/**'
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: 'Variante de compilação (debug ou release)'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+      gradle_task:
+        description: 'Tarefa do Gradle a executar'
+        required: true
+        default: 'assembleDebug'
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
+
+      - name: Build APK with Gradle
+        run: |
+          BUILD_TYPE="${{ github.event.inputs.build_variant || 'debug' }}"
+          GRADLE_CMD="${{ github.event.inputs.gradle_task || 'assembleDebug' }}"
+
+          echo "Iniciando compilação: $BUILD_TYPE via $GRADLE_CMD"
+
+          if [ -f "./gradlew" ]; then
+            ./gradlew $GRADLE_CMD --no-daemon --stacktrace
+          else
+            gradle $GRADLE_CMD --no-daemon --stacktrace
+          fi
+
+      - name: Package Generated APKs
+        run: |
+          mkdir -p output_apks
+          find . -name "*.apk" -type f -exec cp {} output_apks/ \;
+          echo "Arquivos APK encontrados:"
+          ls -la output_apks/
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-compiled-apk
+          path: output_apks/*.apk
+          retention-days: 14
+          if-no-files-found: error
