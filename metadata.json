@@ -1,0 +1,6 @@
+{
+  "name": "GitBuilder CI",
+  "description": "Compilador de código-fonte Android automatizado usando GitHub Actions",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
