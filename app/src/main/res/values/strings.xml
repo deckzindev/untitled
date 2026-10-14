@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">GitBuilder CI</string>
+    <string name="app_name">Studio APK</string>
     <string name="nav_build">Compilar</string>
     <string name="nav_history">Compilações</string>
     <string name="nav_settings">Configuração</string>

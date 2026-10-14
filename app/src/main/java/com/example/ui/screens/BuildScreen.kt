@@ -21,11 +21,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -213,14 +215,65 @@ fun BuildScreen(
 
       if (buildState.errorMessage != null && !buildState.isBuilding) {
         Card(
-          colors = CardDefaults.cardColors(containerColor = AccentRed.copy(alpha = 0.15f)),
-          shape = RoundedCornerShape(8.dp),
-          modifier = Modifier.fillMaxWidth().border(1.dp, AccentRed.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+          colors = CardDefaults.cardColors(containerColor = AccentRed.copy(alpha = 0.12f)),
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, AccentRed.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
         ) {
-          Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Warning, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = buildState.errorMessage ?: "", color = AccentRed, fontSize = 12.sp)
+          Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+              verticalAlignment = Alignment.Top,
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = AccentRed,
+                modifier = Modifier.size(20.dp)
+              )
+              Spacer(modifier = Modifier.width(10.dp))
+              Text(
+                text = buildState.errorMessage ?: "",
+                color = AccentRed,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.weight(1f)
+              )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.End
+            ) {
+              OutlinedButton(
+                onClick = {
+                  if (authState.token.isBlank()) {
+                    onNavigateToSettings()
+                  } else {
+                    viewModel.startBuild { onNavigateToHistory() }
+                  }
+                },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentRed),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AccentRed.copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.testTag("retry_build_button")
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Refresh,
+                  contentDescription = null,
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = "Tentar Novamente",
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Bold
+                )
+              }
+            }
           }
         }
       }

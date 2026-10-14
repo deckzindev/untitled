@@ -144,7 +144,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val textView = TextView(this).apply {
-            text = "App compilado com sucesso pelo GitBuilder CI!"
+            text = "App compilado com sucesso pelo Studio APK!"
             textSize = 20f
             setPadding(40, 40, 40, 40)
         }

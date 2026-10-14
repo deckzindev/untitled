@@ -95,6 +95,44 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
     _statusNotice.value = null
   }
 
+  fun isOnline(): Boolean {
+    val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return true
+    val network = cm.activeNetwork ?: return false
+    val caps = cm.getNetworkCapabilities(network) ?: return false
+    return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+  }
+
+  fun formatNetworkError(e: Throwable?): String {
+    if (e == null) return "Erro desconhecido ao comunicar com o GitHub."
+    val message = e.message ?: e.localizedMessage ?: ""
+    return when {
+      e is java.net.UnknownHostException ||
+      message.contains("Unable to resolve host", ignoreCase = true) ||
+      message.contains("No address associated with hostname", ignoreCase = true) ->
+        "Sem conexão com a internet. Não foi possível conectar aos servidores do GitHub (api.github.com). Verifique seu Wi-Fi ou dados móveis e tente novamente."
+
+      e is java.net.SocketTimeoutException || message.contains("timeout", ignoreCase = true) ->
+        "O tempo limite de conexão com o GitHub expirou. Sua conexão pode estar instável. Toque em Tentar Novamente."
+
+      e is java.net.ConnectException || message.contains("Failed to connect", ignoreCase = true) ->
+        "Falha ao conectar com os servidores do GitHub. Verifique sua conexão com a internet."
+
+      e is javax.net.ssl.SSLException || message.contains("SSL", ignoreCase = true) ->
+        "Falha na conexão segura (SSL). Verifique a data e hora do seu dispositivo."
+
+      message.contains("401", ignoreCase = true) || message.contains("Bad credentials", ignoreCase = true) ->
+        "Token do GitHub inválido ou expirado. Acesse a aba Configuração e atualize seu token."
+
+      message.contains("403", ignoreCase = true) || message.contains("rate limit", ignoreCase = true) ->
+        "Limite de requisições da API do GitHub atingido ou permissão negada. Verifique as permissões do seu token (repo, workflow)."
+
+      message.contains("404", ignoreCase = true) ->
+        "Recurso ou repositório não encontrado no GitHub (404). Verifique o nome do repositório configurado."
+
+      else -> message
+    }
+  }
+
   private var gitHubRepository: GitHubRepository? = null
   private var pollingJob: Job? = null
 
@@ -164,9 +202,10 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
 
         fetchUserRepos()
       } else {
+        val friendlyMsg = formatNetworkError(userResult.exceptionOrNull())
         _authUiState.value = _authUiState.value.copy(
           isVerifying = false,
-          errorMessage = userResult.exceptionOrNull()?.localizedMessage ?: "Falha ao validar o token do GitHub."
+          errorMessage = friendlyMsg
         )
       }
     }
@@ -305,6 +344,14 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
   }
 
   fun startBuild(onSuccessNavigateToHistory: () -> Unit) {
+    if (!isOnline()) {
+      _buildUiState.value = _buildUiState.value.copy(
+        isBuilding = false,
+        errorMessage = "Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis e tente novamente."
+      )
+      return
+    }
+
     val analysis = _buildUiState.value.projectAnalysis ?: run {
       _buildUiState.value = _buildUiState.value.copy(errorMessage = "Nenhum projeto ZIP selecionado.")
       return
@@ -374,11 +421,11 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
 
         onSuccessNavigateToHistory()
       } else {
-        val errorMsg = result.exceptionOrNull()?.localizedMessage ?: "Erro desconhecido ao enviar código."
+        val friendlyMsg = formatNetworkError(result.exceptionOrNull())
         val failed = buildDao.getBuildById(insertedId)?.copy(
           status = "failed",
           conclusion = "failure",
-          errorMessage = errorMsg,
+          errorMessage = friendlyMsg,
           completedAt = System.currentTimeMillis()
         )
         if (failed != null) {
@@ -388,7 +435,7 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
         _buildUiState.value = _buildUiState.value.copy(
           isBuilding = false,
           currentProgress = null,
-          errorMessage = errorMsg
+          errorMessage = friendlyMsg
         )
       }
     }

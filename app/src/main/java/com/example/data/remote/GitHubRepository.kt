@@ -33,9 +33,31 @@ sealed class BuildStepProgress {
 
 class GitHubRepository(private val apiService: GitHubApiService) {
 
+  private suspend fun <T> withRetry(maxAttempts: Int = 3, delayMs: Long = 1200, block: suspend () -> T): T {
+    var lastException: Exception? = null
+    for (attempt in 1..maxAttempts) {
+      try {
+        return block()
+      } catch (e: Exception) {
+        lastException = e
+        val isTransient = e is java.io.IOException ||
+                          e is java.net.UnknownHostException ||
+                          e is java.net.SocketTimeoutException ||
+                          e is java.net.ConnectException ||
+                          e.message?.contains("Unable to resolve host", ignoreCase = true) == true
+        if (attempt < maxAttempts && isTransient) {
+          kotlinx.coroutines.delay(delayMs * attempt)
+        } else {
+          throw e
+        }
+      }
+    }
+    throw lastException ?: Exception("Falha na comunicação com o servidor após tentativas.")
+  }
+
   suspend fun validateToken(): Result<GitHubUser> = withContext(Dispatchers.IO) {
     try {
-      val response = apiService.getCurrentUser()
+      val response = withRetry { apiService.getCurrentUser() }
       if (response.isSuccessful && response.body() != null) {
         Result.success(response.body()!!)
       } else {
@@ -63,7 +85,7 @@ class GitHubRepository(private val apiService: GitHubApiService) {
     try {
       val req = CreateRepoRequest(
         name = repoName,
-        description = "Repositório dedicado para compilação de APKs com GitBuilder CI",
+        description = "Repositório dedicado para compilação de APKs com Studio APK",
         private = true,
         autoInit = true
       )
@@ -98,7 +120,7 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       )
 
       val request = CreateOrUpdateFileRequest(
-        message = "ci: Configurar workflow de compilação GitBuilder CI",
+        message = "ci: Configurar workflow de compilação Studio APK",
         content = base64Workflow,
         sha = sha
       )
@@ -128,18 +150,18 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       val repo = parts[1]
 
       // Verificar se o repositório existe; se retornar 404, cria automaticamente!
-      val checkResp = apiService.getFileContent(owner, repo, "README.md")
+      val checkResp = withRetry { apiService.getFileContent(owner, repo, "README.md") }
       if (checkResp.code() == 404) {
-        val userRepos = apiService.getUserRepos(perPage = 100)
+        val userRepos = withRetry { apiService.getUserRepos(perPage = 100) }
         val exists = userRepos.body()?.any { it.name.equals(repo, ignoreCase = true) } == true
         if (!exists) {
           val createReq = CreateRepoRequest(
             name = repo,
-            description = "Repositório de compilação automatizada com GitBuilder CI",
+            description = "Repositório de compilação automatizada com Studio APK",
             private = true,
             autoInit = true
           )
-          val createdResp = apiService.createRepo(createReq)
+          val createdResp = withRetry { apiService.createRepo(createReq) }
           if (createdResp.isSuccessful) {
             kotlinx.coroutines.delay(2000)
             installWorkflow(repoFullName)
@@ -156,7 +178,7 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       files.forEachIndexed { index, fileInfo ->
         onProgress(BuildStepProgress.UploadingFiles(index + 1, files.size + 1, fileInfo.path))
         val blobReq = CreateBlobRequest(content = fileInfo.base64Content)
-        val blobResp = apiService.createBlob(owner, repo, blobReq)
+        val blobResp = withRetry { apiService.createBlob(owner, repo, blobReq) }
         if (!blobResp.isSuccessful || blobResp.body() == null) {
           throw Exception("Falha ao enviar arquivo ${fileInfo.path}: HTTP ${blobResp.code()}")
         }
@@ -176,7 +198,7 @@ class GitHubRepository(private val apiService: GitHubApiService) {
         WorkflowTemplate.WORKFLOW_YAML.toByteArray(StandardCharsets.UTF_8),
         Base64.NO_WRAP
       )
-      val wfBlob = apiService.createBlob(owner, repo, CreateBlobRequest(content = workflowBase64))
+      val wfBlob = withRetry { apiService.createBlob(owner, repo, CreateBlobRequest(content = workflowBase64)) }
       if (wfBlob.isSuccessful && wfBlob.body() != null) {
         treeItems.add(
           GitTreeItem(
@@ -191,7 +213,7 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       // 3. Create Tree
       onProgress(BuildStepProgress.CreatingTree)
       val treeReq = CreateTreeRequest(tree = treeItems)
-      val treeResp = apiService.createTree(owner, repo, treeReq)
+      val treeResp = withRetry { apiService.createTree(owner, repo, treeReq) }
       if (!treeResp.isSuccessful || treeResp.body() == null) {
         throw Exception("Falha ao criar árvore Git: HTTP ${treeResp.code()}")
       }
@@ -200,10 +222,10 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       // 4. Create Commit
       onProgress(BuildStepProgress.CreatingCommit)
       val commitReq = CreateCommitRequest(
-        message = "GitBuilder CI: Compilando $projectName [$buildVariant]",
+        message = "Studio APK: Compilando $projectName [$buildVariant]",
         tree = treeSha
       )
-      val commitResp = apiService.createCommit(owner, repo, commitReq)
+      val commitResp = withRetry { apiService.createCommit(owner, repo, commitReq) }
       if (!commitResp.isSuccessful || commitResp.body() == null) {
         throw Exception("Falha ao criar commit: HTTP ${commitResp.code()}")
       }
@@ -215,7 +237,7 @@ class GitHubRepository(private val apiService: GitHubApiService) {
         ref = "refs/heads/$branchName",
         sha = commitSha
       )
-      val refResp = apiService.createRef(owner, repo, refReq)
+      val refResp = withRetry { apiService.createRef(owner, repo, refReq) }
       if (!refResp.isSuccessful) {
         throw Exception("Falha ao criar branch $branchName: HTTP ${refResp.code()}")
       }

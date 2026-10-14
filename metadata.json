@@ -1,5 +1,5 @@
 {
-  "name": "GitBuilder CI",
+  "name": "Studio APK",
   "description": "Compilador remoto de aplicativos Android com integração ao GitHub Actions, download e instalação direta de APKs.",
   "requestFramePermissions": [],
   "majorCapabilities": [

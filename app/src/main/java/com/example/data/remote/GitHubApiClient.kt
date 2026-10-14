@@ -20,7 +20,7 @@ object GitHubApiClient {
       val builder = original.newBuilder()
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "GitBuilder-CI-Android")
+        .header("User-Agent", "Studio-APK-Android")
 
       if (cleanToken.isNotBlank()) {
         builder.header("Authorization", "Bearer $cleanToken")
@@ -36,6 +36,7 @@ object GitHubApiClient {
     val okHttpClient = OkHttpClient.Builder()
       .addInterceptor(authInterceptor)
       .addInterceptor(loggingInterceptor)
+      .retryOnConnectionFailure(true)
       .followRedirects(true)
       .followSslRedirects(true)
       .connectTimeout(60, TimeUnit.SECONDS)
