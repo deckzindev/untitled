@@ -31,10 +31,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,7 +47,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -54,13 +54,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.remote.BuildStepProgress
@@ -68,6 +72,7 @@ import com.example.ui.theme.AccentAmber
 import com.example.ui.theme.AccentBlueBright
 import com.example.ui.theme.AccentGreen
 import com.example.ui.theme.AccentGreenBright
+import com.example.ui.theme.AccentPurple
 import com.example.ui.theme.AccentRed
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
@@ -87,6 +92,9 @@ fun BuildScreen(
   val authState by viewModel.authUiState.collectAsState()
   val buildState by viewModel.buildUiState.collectAsState()
 
+  var inlineTokenInput by remember { mutableStateOf(authState.token) }
+  var isInlineTokenVisible by remember { mutableStateOf(false) }
+
   val zipPickerLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.OpenDocument()
   ) { uri: Uri? ->
@@ -104,36 +112,82 @@ fun BuildScreen(
   ) {
     Spacer(modifier = Modifier.height(4.dp))
 
-    // 1. Repository Info Banner
-    if (authState.token.isBlank() || authState.selectedRepo.isBlank()) {
+    // 1. Connection Card (Connected or Inline Connect)
+    if (authState.token.isBlank()) {
       Card(
-        colors = CardDefaults.cardColors(containerColor = AccentAmber.copy(alpha = 0.12f)),
-        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier
           .fillMaxWidth()
-          .border(1.dp, AccentAmber.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-          .clickable { onNavigateToSettings() }
+          .border(1.dp, AccentAmber.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
       ) {
-        Row(
-          modifier = Modifier.padding(14.dp),
-          verticalAlignment = Alignment.CenterVertically
+        Column(
+          modifier = Modifier.padding(16.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          Icon(Icons.Default.Warning, contentDescription = null, tint = AccentAmber)
-          Spacer(modifier = Modifier.width(12.dp))
-          Column(modifier = Modifier.weight(1f)) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Key, contentDescription = null, tint = AccentAmber)
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = if (authState.token.isBlank()) "GitHub PAT não configurado" else "Nenhum repositório selecionado",
-              fontWeight = FontWeight.SemiBold,
-              color = AccentAmber,
-              fontSize = 14.sp
-            )
-            Text(
-              text = "Toque para configurar sua conta e repositório de compilação.",
-              color = TextSecondary,
-              fontSize = 12.sp
+              text = "Conectar GitHub PAT",
+              fontWeight = FontWeight.Bold,
+              fontSize = 16.sp,
+              color = AccentAmber
             )
           }
-          Icon(Icons.Default.Settings, contentDescription = "Configurar", tint = AccentAmber)
+
+          Text(
+            text = "Insira seu Personal Access Token do GitHub com permissões 'repo' e 'workflow':",
+            fontSize = 12.sp,
+            color = TextSecondary
+          )
+
+          OutlinedTextField(
+            value = inlineTokenInput,
+            onValueChange = { inlineTokenInput = it },
+            placeholder = { Text("ghp_xxxxxxxxxxxx", color = TextMuted) },
+            singleLine = true,
+            visualTransformation = if (isInlineTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+              IconButton(onClick = { isInlineTokenVisible = !isInlineTokenVisible }) {
+                Icon(
+                  if (isInlineTokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                  contentDescription = null,
+                  tint = TextSecondary
+                )
+              }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = AccentBlueBright,
+              unfocusedBorderColor = DarkBorder,
+              focusedTextColor = TextPrimary,
+              unfocusedTextColor = TextPrimary
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("inline_token_input")
+          )
+
+          Button(
+            onClick = { viewModel.saveAndVerifyToken(inlineTokenInput) },
+            enabled = inlineTokenInput.isNotBlank() && !authState.isVerifying,
+            colors = ButtonDefaults.buttonColors(containerColor = AccentBlueBright),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("inline_verify_token_btn")
+          ) {
+            if (authState.isVerifying) {
+              CircularProgressIndicator(modifier = Modifier.size(16.dp), color = DarkSurface, strokeWidth = 2.dp)
+              Spacer(modifier = Modifier.width(8.dp))
+              Text("Validando com GitHub...", color = DarkSurface)
+            } else {
+              Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = DarkSurface)
+              Spacer(modifier = Modifier.width(8.dp))
+              Text("Conectar Token", color = DarkSurface, fontWeight = FontWeight.Bold)
+            }
+          }
         }
       }
     } else {
@@ -159,15 +213,17 @@ fun BuildScreen(
           }
           Spacer(modifier = Modifier.width(12.dp))
           Column(modifier = Modifier.weight(1f)) {
+            val userLabel = authState.user?.login ?: "Conectado"
             Text(
-              text = "Repositório do GitHub CI",
+              text = "@$userLabel • Repositório:",
               fontSize = 11.sp,
-              color = TextMuted
+              color = AccentGreenBright,
+              fontWeight = FontWeight.Medium
             )
             Text(
-              text = authState.selectedRepo,
+              text = authState.selectedRepo.ifBlank { "android-compiler-runner (Automático)" },
               fontWeight = FontWeight.Bold,
-              fontSize = 14.sp,
+              fontSize = 13.sp,
               fontFamily = FontFamily.Monospace,
               color = AccentBlueBright
             )
@@ -265,7 +321,7 @@ fun BuildScreen(
             }
 
             Text(
-              text = "O ZIP deve conter a estrutura de código-fonte Android (arquivos build.gradle, settings.gradle, src, etc). Pastas como .gradle e build serão filtradas automaticamente.",
+              text = "O ZIP deve conter o código do seu aplicativo Android. Pastas pesadas (.gradle e build) são filtradas automaticamente.",
               fontSize = 11.sp,
               color = TextMuted,
               lineHeight = 15.sp
@@ -300,7 +356,7 @@ fun BuildScreen(
               Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 val sizeKb = analysis.totalSizeBytes / 1024
                 Text(
-                  text = "📦 ${analysis.totalFiles} arquivos prontos para envio (${sizeKb} KB)",
+                  text = "📦 ${analysis.totalFiles} arquivos prontos (${sizeKb} KB)",
                   fontSize = 13.sp,
                   fontWeight = FontWeight.Medium,
                   color = TextPrimary
@@ -412,7 +468,7 @@ fun BuildScreen(
               is BuildStepProgress.CreatingTree -> "Criando árvore Git no GitHub..."
               is BuildStepProgress.CreatingCommit -> "Criando commit de compilação..."
               is BuildStepProgress.UpdatingBranch -> "Atualizando branch no GitHub..."
-              is BuildStepProgress.WaitingForRunner -> "Aguardando o runner do GitHub iniciar a execução..."
+              is BuildStepProgress.WaitingForRunner -> "Aguardando runner do GitHub Actions iniciar..."
               is BuildStepProgress.WorkflowStarted -> "Execução do workflow iniciada (ID #${step.runId})"
               else -> "Processando..."
             }
@@ -451,33 +507,92 @@ fun BuildScreen(
       }
     }
 
-    // 5. Main Submit Button
-    val canSubmit = buildState.projectAnalysis != null &&
-        authState.token.isNotBlank() &&
-        authState.selectedRepo.isNotBlank() &&
-        !buildState.isBuilding
+    // 5. Smart Action Button - Never ambiguously disabled!
+    when {
+      buildState.isBuilding -> {
+        Button(
+          onClick = {},
+          enabled = false,
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag("start_build_button"),
+          colors = ButtonDefaults.buttonColors(disabledContainerColor = DarkSurfaceVariant),
+          shape = RoundedCornerShape(12.dp)
+        ) {
+          CircularProgressIndicator(modifier = Modifier.size(18.dp), color = AccentBlueBright, strokeWidth = 2.dp)
+          Spacer(modifier = Modifier.width(10.dp))
+          Text("Compilando no GitHub Actions...", color = TextSecondary, fontSize = 14.sp)
+        }
+      }
 
-    Button(
-      onClick = { viewModel.startBuild { onNavigateToHistory() } },
-      enabled = canSubmit,
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(52.dp)
-        .testTag("start_build_button"),
-      colors = ButtonDefaults.buttonColors(
-        containerColor = AccentGreenBright,
-        disabledContainerColor = DarkSurfaceVariant
-      ),
-      shape = RoundedCornerShape(12.dp)
-    ) {
-      Icon(Icons.Default.PlayArrow, contentDescription = null, tint = if (canSubmit) DarkSurface else TextMuted)
-      Spacer(modifier = Modifier.width(8.dp))
-      Text(
-        text = "Enviar e Compilar APK no GitHub Actions",
-        color = if (canSubmit) DarkSurface else TextMuted,
-        fontWeight = FontWeight.Bold,
-        fontSize = 15.sp
-      )
+      authState.token.isBlank() -> {
+        Button(
+          onClick = {
+            if (inlineTokenInput.isNotBlank()) {
+              viewModel.saveAndVerifyToken(inlineTokenInput)
+            } else {
+              onNavigateToSettings()
+            }
+          },
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag("start_build_button"),
+          colors = ButtonDefaults.buttonColors(containerColor = AccentAmber),
+          shape = RoundedCornerShape(12.dp)
+        ) {
+          Icon(Icons.Default.Key, contentDescription = null, tint = DarkSurface)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Conectar Token do GitHub para Iniciar", color = DarkSurface, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+      }
+
+      buildState.projectAnalysis == null -> {
+        Button(
+          onClick = {
+            zipPickerLauncher.launch(
+              arrayOf(
+                "application/zip",
+                "application/x-zip-compressed",
+                "application/octet-stream",
+                "*/*"
+              )
+            )
+          },
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag("start_build_button"),
+          colors = ButtonDefaults.buttonColors(containerColor = AccentBlueBright),
+          shape = RoundedCornerShape(12.dp)
+        ) {
+          Icon(Icons.Default.FolderZip, contentDescription = null, tint = DarkSurface)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Selecionar Projeto ZIP para Compilar", color = DarkSurface, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+      }
+
+      else -> {
+        Button(
+          onClick = { viewModel.startBuild { onNavigateToHistory() } },
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag("start_build_button"),
+          colors = ButtonDefaults.buttonColors(containerColor = AccentGreenBright),
+          shape = RoundedCornerShape(12.dp)
+        ) {
+          Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkSurface)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = "Enviar e Compilar APK no GitHub Actions",
+            color = DarkSurface,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp
+          )
+        }
+      }
     }
 
     Spacer(modifier = Modifier.height(16.dp))

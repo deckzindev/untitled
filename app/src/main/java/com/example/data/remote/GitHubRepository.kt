@@ -125,6 +125,26 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       val owner = parts[0]
       val repo = parts[1]
 
+      // Verificar se o repositório existe; se retornar 404, cria automaticamente!
+      val checkResp = apiService.getFileContent(owner, repo, "README.md")
+      if (checkResp.code() == 404) {
+        val userRepos = apiService.getUserRepos(perPage = 100)
+        val exists = userRepos.body()?.any { it.name.equals(repo, ignoreCase = true) } == true
+        if (!exists) {
+          val createReq = CreateRepoRequest(
+            name = repo,
+            description = "Repositório de compilação automatizada com GitBuilder CI",
+            private = true,
+            autoInit = true
+          )
+          val createdResp = apiService.createRepo(createReq)
+          if (createdResp.isSuccessful) {
+            kotlinx.coroutines.delay(2000)
+            installWorkflow(repoFullName)
+          }
+        }
+      }
+
       val safeName = projectName.replace(Regex("[^a-zA-Z0-9_-]"), "_")
       val branchName = "build/$safeName-${System.currentTimeMillis()}"
 

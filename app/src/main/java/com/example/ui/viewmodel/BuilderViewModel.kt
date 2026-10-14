@@ -128,9 +128,19 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
         prefs.saveGitHubToken(cleanToken)
         prefs.saveGitHubUsername(user.login)
 
+        val currentRepo = _authUiState.value.selectedRepo.ifBlank {
+          prefs.defaultRepo.value.ifBlank {
+            "${user.login}/android-compiler-runner"
+          }
+        }
+        prefs.saveDefaultRepo(currentRepo)
+
         _authUiState.value = _authUiState.value.copy(
+          token = cleanToken,
           user = user,
+          selectedRepo = currentRepo,
           isVerifying = false,
+          errorMessage = null,
           infoMessage = "Autenticado com sucesso como @${user.login}!"
         )
 
@@ -153,8 +163,11 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
         val currentSelected = _authUiState.value.selectedRepo
         val defaultChoice = if (currentSelected.isNotBlank() && list.any { it.fullName == currentSelected }) {
           currentSelected
+        } else if (list.isNotEmpty()) {
+          list.first().fullName
         } else {
-          list.firstOrNull()?.fullName ?: ""
+          val username = _authUiState.value.user?.login ?: prefs.githubUsername.value
+          if (username.isNotBlank()) "$username/android-compiler-runner" else currentSelected
         }
 
         _authUiState.value = _authUiState.value.copy(
@@ -169,8 +182,9 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
   }
 
   fun setSelectedRepo(repoFullName: String) {
-    _authUiState.value = _authUiState.value.copy(selectedRepo = repoFullName)
-    prefs.saveDefaultRepo(repoFullName)
+    val clean = repoFullName.trim()
+    _authUiState.value = _authUiState.value.copy(selectedRepo = clean)
+    prefs.saveDefaultRepo(clean)
   }
 
   fun setBuildVariant(variant: String) {

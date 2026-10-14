@@ -288,32 +288,41 @@ fun SettingsScreen(viewModel: BuilderViewModel) {
           color = TextSecondary
         )
 
-        // Dropdown for selecting user's repo
-        if (authState.repos.isNotEmpty()) {
-          ExposedDropdownMenuBox(
-            expanded = isRepoDropdownExpanded,
-            onExpandedChange = { isRepoDropdownExpanded = !isRepoDropdownExpanded },
-            modifier = Modifier.fillMaxWidth()
-          ) {
-            OutlinedTextField(
-              value = authState.selectedRepo.ifBlank { "Selecione um repositório..." },
-              onValueChange = {},
-              readOnly = true,
-              label = { Text("Repositório Selecionado") },
-              trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isRepoDropdownExpanded) },
-              colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentPurple,
-                unfocusedBorderColor = DarkBorder,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary
-              ),
-              shape = RoundedCornerShape(8.dp),
-              modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth()
-                .testTag("select_repo_dropdown")
-            )
+        // Editable or Dropdown for selecting user's repo
+        var repoInputText by remember(authState.selectedRepo) { mutableStateOf(authState.selectedRepo) }
 
+        ExposedDropdownMenuBox(
+          expanded = isRepoDropdownExpanded,
+          onExpandedChange = { isRepoDropdownExpanded = !isRepoDropdownExpanded },
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          OutlinedTextField(
+            value = repoInputText,
+            onValueChange = {
+              repoInputText = it
+              viewModel.setSelectedRepo(it)
+            },
+            label = { Text("Nome do Repositório (usuário/repo)") },
+            placeholder = { Text("ex: ${authState.user?.login ?: "usuario"}/android-compiler-runner") },
+            trailingIcon = {
+              if (authState.repos.isNotEmpty()) {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = isRepoDropdownExpanded)
+              }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = AccentPurple,
+              unfocusedBorderColor = DarkBorder,
+              focusedTextColor = TextPrimary,
+              unfocusedTextColor = TextPrimary
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+              .menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryEditable, true)
+              .fillMaxWidth()
+              .testTag("select_repo_dropdown")
+          )
+
+          if (authState.repos.isNotEmpty()) {
             ExposedDropdownMenu(
               expanded = isRepoDropdownExpanded,
               onDismissRequest = { isRepoDropdownExpanded = false },
@@ -330,6 +339,7 @@ fun SettingsScreen(viewModel: BuilderViewModel) {
                     }
                   },
                   onClick = {
+                    repoInputText = repo.fullName
                     viewModel.setSelectedRepo(repo.fullName)
                     isRepoDropdownExpanded = false
                   }
