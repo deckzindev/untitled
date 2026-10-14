@@ -1,7 +1,13 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
@@ -17,6 +23,7 @@ import com.example.data.remote.GitHubRepository
 import com.example.util.SampleProjectGenerator
 import com.example.util.ZipAnalysisResult
 import com.example.util.ZipProjectParser
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +49,7 @@ data class AuthUiState(
 data class BuildUiState(
   val projectAnalysis: ZipAnalysisResult? = null,
   val projectName: String = "",
-  val buildVariant: String = "debug", // "debug" or "release"
+  val buildVariant: String = "release",
   val isAnalyzing: Boolean = false,
   val isBuilding: Boolean = false,
   val currentProgress: BuildStepProgress? = null,
@@ -78,6 +85,16 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
   val allBuilds: StateFlow<List<ProjectBuildEntity>> = buildDao.getAllBuilds()
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+  private val _downloadingBuildIds = MutableStateFlow<Set<Long>>(emptySet())
+  val downloadingBuildIds: StateFlow<Set<Long>> = _downloadingBuildIds.asStateFlow()
+
+  private val _statusNotice = MutableStateFlow<String?>(null)
+  val statusNotice: StateFlow<String?> = _statusNotice.asStateFlow()
+
+  fun clearStatusNotice() {
+    _statusNotice.value = null
+  }
+
   private var gitHubRepository: GitHubRepository? = null
   private var pollingJob: Job? = null
 
@@ -91,7 +108,7 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
       selectedRepo = savedRepo
     )
     _buildUiState.value = _buildUiState.value.copy(
-      buildVariant = savedVariant
+      buildVariant = "release"
     )
 
     if (savedToken.isNotBlank()) {
@@ -312,8 +329,8 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
       )
 
       val projectName = _buildUiState.value.projectName.ifBlank { "App" }
-      val variant = _buildUiState.value.buildVariant
-      val gradleTask = if (variant == "release") "assembleRelease" else "assembleDebug"
+      val variant = "release"
+      val gradleTask = "assembleRelease"
 
       // 1. Create DB record in "uploading" state
       val buildEntity = ProjectBuildEntity(
@@ -396,15 +413,17 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
 
                   var artifactName: String? = null
                   var artifactUrl: String? = null
+                  var artifactId: Long? = null
 
                   if (isFinished && run.conclusion == "success") {
                     val artifactsResult = repo.getArtifacts(build.repoFullName, build.runId)
                     if (artifactsResult.isSuccess) {
                       val list = artifactsResult.getOrNull().orEmpty()
-                      val apkArtifact = list.firstOrNull { it.name.contains("apk") } ?: list.firstOrNull()
+                      val apkArtifact = list.firstOrNull { it.name.contains("apk", ignoreCase = true) } ?: list.firstOrNull()
                       if (apkArtifact != null) {
                         artifactName = apkArtifact.name
                         artifactUrl = apkArtifact.archiveDownloadUrl
+                        artifactId = apkArtifact.id
                       }
                     }
                   }
@@ -414,7 +433,9 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
                     conclusion = run.conclusion,
                     runUrl = run.htmlUrl ?: build.runUrl,
                     artifactName = artifactName ?: build.artifactName,
+                    artifactId = artifactId ?: build.artifactId,
                     artifactDownloadUrl = artifactUrl ?: build.artifactDownloadUrl,
+                    apkFileName = if (build.apkFileName == null) "${build.projectName}-release.apk" else build.apkFileName,
                     completedAt = if (isFinished) System.currentTimeMillis() else null
                   )
                   buildDao.updateBuild(updated)
@@ -474,14 +495,150 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
     _logsDialogState.value = LogsDialogState(isVisible = false)
   }
 
+  fun downloadAndInstallApk(build: ProjectBuildEntity, context: Context) {
+    // 1. If APK is already downloaded locally and file exists on disk, launch installer immediately!
+    val existingPath = build.localApkPath
+    if (!existingPath.isNullOrBlank()) {
+      val localFile = File(existingPath)
+      if (localFile.exists() && localFile.length() > 0) {
+        launchApkInstaller(context, localFile)
+        return
+      }
+    }
+
+    // 2. Otherwise download directly from GitHub Actions
+    val cleanToken = prefs.githubToken.value.trim()
+    if (cleanToken.isBlank()) {
+      _statusNotice.value = "Configure o token do GitHub nas configurações primeiro."
+      return
+    }
+
+    if (gitHubRepository == null) {
+      initializeApi(cleanToken)
+    }
+
+    val repo = gitHubRepository ?: run {
+      _statusNotice.value = "Inicializando conexão com o GitHub..."
+      return
+    }
+
+    if (_downloadingBuildIds.value.contains(build.id)) return
+
+    viewModelScope.launch {
+      _downloadingBuildIds.value = _downloadingBuildIds.value + build.id
+      try {
+        var targetArtifactId = build.artifactId
+        var targetArtifactUrl = build.artifactDownloadUrl
+
+        // If artifact ID is missing, query GitHub artifacts API
+        if (targetArtifactId == null && build.runId != null) {
+          val artifactsResult = repo.getArtifacts(build.repoFullName, build.runId)
+          if (artifactsResult.isSuccess) {
+            val list = artifactsResult.getOrNull().orEmpty()
+            val apkArtifact = list.firstOrNull { it.name.contains("apk", ignoreCase = true) } ?: list.firstOrNull()
+            if (apkArtifact != null) {
+              targetArtifactId = apkArtifact.id
+              targetArtifactUrl = apkArtifact.archiveDownloadUrl
+            }
+          }
+        }
+
+        val destDir = File(context.filesDir, "downloaded_apks")
+        val baseName = build.projectName.ifBlank { "app" }
+
+        val downloadResult = repo.downloadAndExtractApk(
+          repoFullName = build.repoFullName,
+          artifactId = targetArtifactId,
+          artifactUrl = targetArtifactUrl,
+          destinationDir = destDir,
+          preferredName = "$baseName-release"
+        )
+
+        if (downloadResult.isSuccess) {
+          val apkFile = downloadResult.getOrNull()!!
+          val updated = build.copy(
+            localApkPath = apkFile.absolutePath,
+            artifactId = targetArtifactId,
+            artifactDownloadUrl = targetArtifactUrl,
+            apkFileName = apkFile.name
+          )
+          buildDao.updateBuild(updated)
+
+          // Immediately launch installer with the downloaded real APK file
+          launchApkInstaller(context, apkFile)
+        } else {
+          _statusNotice.value = downloadResult.exceptionOrNull()?.localizedMessage ?: "Falha ao baixar o arquivo APK."
+        }
+      } catch (e: Exception) {
+        _statusNotice.value = "Erro no download do APK: ${e.localizedMessage}"
+      } finally {
+        _downloadingBuildIds.value = _downloadingBuildIds.value - build.id
+      }
+    }
+  }
+
+  fun launchApkInstaller(context: Context, apkFile: File) {
+    if (!apkFile.exists() || apkFile.length() == 0L) {
+      Toast.makeText(context, "Arquivo APK não encontrado no armazenamento local.", Toast.LENGTH_SHORT).show()
+      return
+    }
+
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (!context.packageManager.canRequestPackageInstalls()) {
+          val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+            data = Uri.parse("package:${context.packageName}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          }
+          context.startActivity(settingsIntent)
+          Toast.makeText(
+            context,
+            "Permita a instalação de fontes desconhecidas para prosseguir.",
+            Toast.LENGTH_LONG
+          ).show()
+          return
+        }
+      }
+
+      val apkUri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        apkFile
+      )
+
+      val installIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(apkUri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+
+      context.startActivity(installIntent)
+    } catch (e: Exception) {
+      Toast.makeText(context, "Erro ao abrir instalador: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+    }
+  }
+
   fun deleteBuild(id: Long) {
     viewModelScope.launch {
+      val build = buildDao.getBuildById(id)
+      if (build?.localApkPath != null) {
+        try {
+          File(build.localApkPath).delete()
+        } catch (_: Exception) {}
+      }
       buildDao.deleteById(id)
     }
   }
 
   fun clearAllBuilds() {
     viewModelScope.launch {
+      allBuilds.value.forEach { b ->
+        if (b.localApkPath != null) {
+          try {
+            File(b.localApkPath).delete()
+          } catch (_: Exception) {}
+        }
+      }
       buildDao.clearAll()
     }
   }

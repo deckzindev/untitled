@@ -3,8 +3,8 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Dark Dev Palette (GitHub Actions / Developer Studio aesthetic)
-val DarkBackground = Color(0xFF0D1117)
 val DarkSurface = Color(0xFF161B22)
+val DarkBackground = DarkSurface
 val DarkSurfaceVariant = Color(0xFF21262D)
 val DarkBorder = Color(0xFF30363D)
 

@@ -36,8 +36,10 @@ object GitHubApiClient {
     val okHttpClient = OkHttpClient.Builder()
       .addInterceptor(authInterceptor)
       .addInterceptor(loggingInterceptor)
-      .connectTimeout(30, TimeUnit.SECONDS)
-      .readTimeout(60, TimeUnit.SECONDS)
+      .followRedirects(true)
+      .followSslRedirects(true)
+      .connectTimeout(60, TimeUnit.SECONDS)
+      .readTimeout(180, TimeUnit.SECONDS)
       .writeTimeout(60, TimeUnit.SECONDS)
       .build()
 

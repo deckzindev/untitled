@@ -19,7 +19,7 @@ class PreferencesManager(context: Context) {
   private val _defaultRepo = MutableStateFlow(prefs.getString(KEY_DEFAULT_REPO, "") ?: "")
   val defaultRepo: StateFlow<String> = _defaultRepo.asStateFlow()
 
-  private val _defaultVariant = MutableStateFlow(prefs.getString(KEY_DEFAULT_VARIANT, "debug") ?: "debug")
+  private val _defaultVariant = MutableStateFlow(prefs.getString(KEY_DEFAULT_VARIANT, "release") ?: "release")
   val defaultVariant: StateFlow<String> = _defaultVariant.asStateFlow()
 
   fun saveGitHubToken(token: String) {

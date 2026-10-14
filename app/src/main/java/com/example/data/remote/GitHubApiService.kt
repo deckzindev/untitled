@@ -28,6 +28,8 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
+import retrofit2.http.Url
 
 interface GitHubApiService {
 
@@ -146,5 +148,19 @@ interface GitHubApiService {
     @Path("owner") owner: String,
     @Path("repo") repo: String,
     @Path("job_id") jobId: Long
+  ): Response<ResponseBody>
+
+  @Streaming
+  @GET("repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip")
+  suspend fun downloadArtifactZip(
+    @Path("owner") owner: String,
+    @Path("repo") repo: String,
+    @Path("artifact_id") artifactId: Long
+  ): Response<ResponseBody>
+
+  @Streaming
+  @GET
+  suspend fun downloadFromUrl(
+    @Url url: String
   ): Response<ResponseBody>
 }

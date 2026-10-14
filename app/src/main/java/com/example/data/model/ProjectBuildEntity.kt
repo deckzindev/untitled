@@ -18,7 +18,10 @@ data class ProjectBuildEntity(
   val conclusion: String? = null, // "success", "failure", "cancelled"
   val runUrl: String? = null,
   val artifactName: String? = null,
+  val artifactId: Long? = null,
   val artifactDownloadUrl: String? = null,
+  val localApkPath: String? = null,
+  val apkFileName: String? = null,
   val createdAt: Long = System.currentTimeMillis(),
   val completedAt: Long? = null,
   val totalFiles: Int = 0,

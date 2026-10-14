@@ -81,15 +81,19 @@ jobs:
 
       - name: 🔨 Compilar APK do Projeto
         run: |
-          BUILD_TYPE="${'$'}{{ github.event.inputs.build_variant || 'debug' }}"
-          GRADLE_CMD="${'$'}{{ github.event.inputs.gradle_task || 'assembleDebug' }}"
+          BUILD_TYPE="${'$'}{{ github.event.inputs.build_variant || 'release' }}"
+          GRADLE_CMD="${'$'}{{ github.event.inputs.gradle_task || '' }}"
 
-          echo "Iniciando compilação: ${'$'}BUILD_TYPE via ${'$'}GRADLE_CMD"
+          if [ -z "${'$'}GRADLE_CMD" ]; then
+            GRADLE_CMD="assembleRelease"
+          fi
+
+          echo "Iniciando compilação: ${'$'}GRADLE_CMD"
 
           if [ -f "./gradlew" ]; then
-            ./gradlew ${'$'}GRADLE_CMD --no-daemon --stacktrace
+            ./gradlew ${'$'}GRADLE_CMD --no-daemon --stacktrace || ./gradlew assemble --no-daemon --stacktrace
           else
-            gradle ${'$'}GRADLE_CMD --no-daemon --stacktrace
+            gradle ${'$'}GRADLE_CMD --no-daemon --stacktrace || gradle assemble --no-daemon --stacktrace
           fi
 
       - name: 📦 Localizar e Empacotar APKs Gerados

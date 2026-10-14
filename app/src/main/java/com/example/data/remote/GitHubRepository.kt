@@ -17,7 +17,9 @@ import com.example.data.workflow.WorkflowTemplate
 import com.example.util.ProjectFileInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.nio.charset.StandardCharsets
+import java.util.zip.ZipInputStream
 
 sealed class BuildStepProgress {
   data class UploadingFiles(val current: Int, val total: Int, val currentFile: String) : BuildStepProgress()
@@ -299,6 +301,63 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       } else {
         Result.failure(Exception("HTTP ${response.code()} ao buscar logs da execução"))
       }
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  suspend fun downloadAndExtractApk(
+    repoFullName: String,
+    artifactId: Long?,
+    artifactUrl: String?,
+    destinationDir: File,
+    preferredName: String
+  ): Result<File> = withContext(Dispatchers.IO) {
+    try {
+      destinationDir.mkdirs()
+      val parts = repoFullName.split("/")
+      if (parts.size != 2) return@withContext Result.failure(Exception("Nome de repositório inválido"))
+      val owner = parts[0]
+      val repo = parts[1]
+
+      val response = if (artifactId != null && artifactId > 0) {
+        apiService.downloadArtifactZip(owner, repo, artifactId)
+      } else if (!artifactUrl.isNullOrBlank()) {
+        apiService.downloadFromUrl(artifactUrl)
+      } else {
+        return@withContext Result.failure(Exception("Nenhum artefato disponível para download"))
+      }
+
+      if (!response.isSuccessful || response.body() == null) {
+        return@withContext Result.failure(Exception("Falha no download do artefato: HTTP ${response.code()}"))
+      }
+
+      val body = response.body()!!
+      val sanitizedBaseName = preferredName.replace(Regex("[^a-zA-Z0-9._-]"), "_").removeSuffix(".apk")
+      val outputFile = File(destinationDir, "$sanitizedBaseName.apk")
+
+      var foundApk = false
+      val zipIn = ZipInputStream(body.byteStream())
+      var entry = zipIn.nextEntry
+
+      while (entry != null) {
+        if (!entry.isDirectory && entry.name.endsWith(".apk", ignoreCase = true)) {
+          outputFile.outputStream().use { out ->
+            zipIn.copyTo(out)
+          }
+          foundApk = true
+          zipIn.closeEntry()
+          break
+        }
+        zipIn.closeEntry()
+        entry = zipIn.nextEntry
+      }
+
+      if (!foundApk) {
+        return@withContext Result.failure(Exception("O arquivo baixado não contém um pacote .apk."))
+      }
+
+      Result.success(outputFile)
     } catch (e: Exception) {
       Result.failure(e)
     }

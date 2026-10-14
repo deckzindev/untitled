@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
 
         Scaffold(
           modifier = Modifier.fillMaxSize(),
-          containerColor = MaterialTheme.colorScheme.background,
+          containerColor = DarkSurface,
           topBar = {
             CenterAlignedTopAppBar(
               colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
           bottomBar = {
             NavigationBar(
               containerColor = DarkSurface,
-              tonalElevation = 4.dp
+              tonalElevation = 0.dp
             ) {
               AppScreen.entries.forEach { screen ->
                 val selected = currentScreen == screen
