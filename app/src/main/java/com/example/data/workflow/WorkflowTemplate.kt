@@ -34,26 +34,52 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout Code
+      - name: 📥 Clonar Código-Fonte
         uses: actions/checkout@v4
 
-      - name: Set up Java JDK 17
+      - name: ☕ Configurar Java JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'gradle'
 
-      - name: Setup Gradle
+      - name: 🐘 Configurar Ambiente Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable
+      - name: 🔑 Configurar Keystores e Variáveis de Ambiente
         run: |
+          echo "=== 1. Gerando debug.keystore e keystores de assinatura ==="
+          keytool -genkeypair -alias androiddebugkey -keypass android -keystore debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 10000 -keyalg RSA -keysize 2048 || true
+          mkdir -p ~/.android
+          cp debug.keystore ~/.android/debug.keystore || true
+          mkdir -p app
+          cp debug.keystore app/debug.keystore || true
+          cp debug.keystore my-upload-key.jks || true
+
+          echo "=== 2. Configurando .env para Secrets Gradle Plugin ==="
+          if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+            cp .env.example .env
+          elif [ ! -f ".env" ]; then
+            touch .env
+          fi
+
+          echo "=== 3. Configurando google-services.json caso ausente ==="
+          if [ ! -f "app/google-services.json" ] && [ ! -f "google-services.json" ]; then
+            echo '{"project_info":{"project_number":"123456789","project_id":"dummy-build-ci","storage_bucket":"dummy.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789:android:dummy","android_client_info":{"package_name":"com.example"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
+          fi
+
+      - name: 🛠️ Garantir Gradle Wrapper Executável
+        run: |
+          if [ ! -f "./gradlew" ]; then
+            echo "gradlew ausente no repositório. Inicializando wrapper..."
+            gradle wrapper || true
+          fi
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
           fi
 
-      - name: Build APK with Gradle
+      - name: 🔨 Compilar APK do Projeto
         run: |
           BUILD_TYPE="${'$'}{{ github.event.inputs.build_variant || 'debug' }}"
           GRADLE_CMD="${'$'}{{ github.event.inputs.gradle_task || 'assembleDebug' }}"
@@ -66,14 +92,14 @@ jobs:
             gradle ${'$'}GRADLE_CMD --no-daemon --stacktrace
           fi
 
-      - name: Package Generated APKs
+      - name: 📦 Localizar e Empacotar APKs Gerados
         run: |
           mkdir -p output_apks
           find . -name "*.apk" -type f -exec cp {} output_apks/ \;
           echo "Arquivos APK encontrados:"
           ls -la output_apks/
 
-      - name: Upload APK Artifact
+      - name: 🚀 Publicar Artefato APK para Download
         uses: actions/upload-artifact@v4
         with:
           name: app-compiled-apk

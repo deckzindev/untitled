@@ -140,4 +140,11 @@ interface GitHubApiService {
     @Path("repo") repo: String,
     @Path("run_id") runId: Long
   ): Response<ArtifactsResponse>
+
+  @GET("repos/{owner}/{repo}/actions/jobs/{job_id}/logs")
+  suspend fun getJobLogs(
+    @Path("owner") owner: String,
+    @Path("repo") repo: String,
+    @Path("job_id") jobId: Long
+  ): Response<ResponseBody>
 }

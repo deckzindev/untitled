@@ -288,4 +288,19 @@ class GitHubRepository(private val apiService: GitHubApiService) {
       Result.failure(e)
     }
   }
+
+  suspend fun getJobLogs(repoFullName: String, jobId: Long): Result<String> = withContext(Dispatchers.IO) {
+    try {
+      val parts = repoFullName.split("/")
+      if (parts.size != 2) return@withContext Result.failure(Exception("Nome de repositório inválido"))
+      val response = apiService.getJobLogs(parts[0], parts[1], jobId)
+      if (response.isSuccessful && response.body() != null) {
+        Result.success(response.body()!!.string())
+      } else {
+        Result.failure(Exception("HTTP ${response.code()} ao buscar logs da execução"))
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
 }

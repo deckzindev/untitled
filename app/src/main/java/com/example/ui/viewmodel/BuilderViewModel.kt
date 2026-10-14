@@ -55,6 +55,7 @@ data class LogsDialogState(
   val buildEntity: ProjectBuildEntity? = null,
   val jobs: List<WorkflowJob> = emptyList(),
   val artifacts: List<GitHubArtifact> = emptyList(),
+  val rawLogs: String? = null,
   val isLoading: Boolean = false,
   val error: String? = null
 )
@@ -448,11 +449,22 @@ class BuilderViewModel(application: Application) : AndroidViewModel(application)
 
       val jobsResult = repo.getRunJobs(build.repoFullName, build.runId)
       val artifactsResult = repo.getArtifacts(build.repoFullName, build.runId)
+      val jobsList = jobsResult.getOrNull().orEmpty()
+
+      var rawLogs: String? = null
+      val primaryJob = jobsList.firstOrNull()
+      if (primaryJob != null) {
+        val logsResult = repo.getJobLogs(build.repoFullName, primaryJob.id)
+        if (logsResult.isSuccess) {
+          rawLogs = logsResult.getOrNull()
+        }
+      }
 
       _logsDialogState.value = _logsDialogState.value.copy(
         isLoading = false,
-        jobs = jobsResult.getOrNull().orEmpty(),
+        jobs = jobsList,
         artifacts = artifactsResult.getOrNull().orEmpty(),
+        rawLogs = rawLogs,
         error = jobsResult.exceptionOrNull()?.localizedMessage
       )
     }

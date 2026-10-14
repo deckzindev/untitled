@@ -16,6 +16,7 @@ class ExampleUnitTest {
     assertTrue("Workflow deve conter setup de Gradle", yaml.contains("gradle/actions/setup-gradle@v4"))
     assertTrue("Workflow deve compilar assembleDebug", yaml.contains("assembleDebug"))
     assertTrue("Workflow deve empacotar e publicar artefato APK", yaml.contains("actions/upload-artifact@v4"))
+    assertTrue("Workflow deve conter geração de keystores", yaml.contains("debug.keystore"))
   }
 
   @Test
